@@ -1,30 +1,58 @@
-import subprocess
+import sys
 import time
+import threading
+import subprocess
 from datetime import datetime
+from multiprocessing import Process
 
-# HAM License callsign
-callsign = "KE0SPF"
+######################################################################
+# OPTIONS
+######################################################################
 
-# APRS Timestamp in format of Day/Hour/Minutes
-zulutime = datetime.utcnow().strftime("%d%H%M")
+# HAM License callsign - MUST BE YOUR CALLSIGN
+# NOT TRANSMITTING WITH YOUR CALLSIGN IS VIOLATION OF FCC
+# AND YOU CAN BE FINED HEAVILY
+CALLSIGN = 'KE0SPF'
+APRS_COMMENT = 'CSU ROCKET TEAM TESTING '
+APRS_SYMBOL_ROCKET = 'O'
+TOTAL_TRANSMISSIONS = 3
 
-# Latitude in format ddmm.hhN (i.e degrees, minutes, and hundredths of a minute north)
-lat = "4033.08N"
+######################################################################
+# TRANSMIT LOOP
+######################################################################
 
-# Longitude in format dddmm.hhW (i.e degrees, minutes, and hundreths of a minute west)
-lon = "10505.41W"
+num_transmissions = 0
+play_time = time.time_ns() + 2e9
+start_time = play_time
 
-# Altitude in format aaaaaa where altitude is in feet
-alt = "005003"
+while num_transmissions < TOTAL_TRANSMISSIONS:
+    # APRS Timestamp in format of Day/Hour/Minutes zulu time
+    zulutime = datetime.utcnow().strftime("%d%H%M")
+    # latitude in format ddmm.hhN (i.e degrees, minutes, and hundredths of a minute north)
+    lat = "4033.14N"
+    # longitude in format dddmm.hhW (i.e degrees, minutes, and hundreths of a minute west)
+    lon = "10505.69W"
+    # altitude in format aaaaaa where altitude is in feet
+    alt = "005003"
+    # time and position format
+    aprs_info = "/{}z{}\\{}{}{} /A={}".format(zulutime, lat, lon, APRS_SYMBOL_ROCKET, APRS_COMMENT + str(num_transmissions), alt)
 
-comment = "CSU Rocket Team RPi Test UV-5R"
+    # write APRS message as wave audio file
+    subprocess.run(["./afsk/aprs", "-c", CALLSIGN, "-o", "packet"+str(num_transmissions)+".wav", aprs_info])
+    aprs_end = time.time_ns()
 
-# Create complete APRS message
-msg = "/{}z{}/{}-{} /A={}".format(zulutime, lat, lon, comment, alt)
-print(msg)
+    # make sure its been 2 seconds exactly before playing audio
+    wait_time = (play_time - time.time_ns()) / 1e9
+    if wait_time > 0:
+        time.sleep(wait_time)
+    else:
+        print("APRS message is too long")
+    print((time.time_ns() - start_time) / 1e9)
 
-# Create Audio file containing APRS packet
-subprocess.call(["aprs", "-c", callsign, "-o", "packet.wav", msg])
-# Play audio file
-subprocess.run(["aplay", "packet.wav"])
+    # play APRS message over default soundcard
+    proc = subprocess.Popen(["sudo aplay -q packet"+str(num_transmissions)+".wav"], shell=True, stdin=None, stdout=None, stderr=None, close_fds=True, start_new_session=True)
+    play_time += 2e9
 
+    num_transmissions += 1
+
+print((time.time_ns() - start_time) / 1e9)

@@ -12,6 +12,6 @@ Clone this repository and go into it
 
 `$ cd APRS-TX`
 
-Ensure correct callsign set in `APRS.py`
+**EXTREMELY IMPORTANT** Ensure correct callsign set in `APRS.py`
 
 Ensure pi output is set to analog/headphones (NOT HDMI)
