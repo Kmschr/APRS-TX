@@ -22,10 +22,11 @@ TOTAL_TRANSMISSIONS = 3
 ######################################################################
 
 num_transmissions = 0
-play_time = time.time_ns() + 2e9
+transmit_repeat = 20e9
+play_time = time.time_ns() + transmit_repeat
 start_time = play_time
 
-while num_transmissions < TOTAL_TRANSMISSIONS:
+while True:
     # APRS Timestamp in format of Day/Hour/Minutes zulu time
     zulutime = datetime.utcnow().strftime("%d%H%M")
     # latitude in format ddmm.hhN (i.e degrees, minutes, and hundredths of a minute north)
@@ -38,7 +39,7 @@ while num_transmissions < TOTAL_TRANSMISSIONS:
     aprs_info = "/{}z{}\\{}{}{} /A={}".format(zulutime, lat, lon, APRS_SYMBOL_ROCKET, APRS_COMMENT + str(num_transmissions), alt)
 
     # write APRS message as wave audio file
-    subprocess.run(["./afsk/aprs", "-c", CALLSIGN, "-o", "packet"+str(num_transmissions)+".wav", aprs_info])
+    subprocess.run(["/home/pi/APRS-TX/afsk/aprs", "-c", CALLSIGN, "-o", "/home/pi/APRS-TX/packet"+str(num_transmissions)+".wav", aprs_info])
     aprs_end = time.time_ns()
 
     # make sure its been 2 seconds exactly before playing audio
@@ -50,8 +51,8 @@ while num_transmissions < TOTAL_TRANSMISSIONS:
     print((time.time_ns() - start_time) / 1e9)
 
     # play APRS message over default soundcard
-    proc = subprocess.Popen(["sudo aplay -q packet"+str(num_transmissions)+".wav"], shell=True, stdin=None, stdout=None, stderr=None, close_fds=True, start_new_session=True)
-    play_time += 2e9
+    proc = subprocess.Popen(["sudo aplay -q /home/pi/APRS-TX/packet"+str(num_transmissions)+".wav"], shell=True, stdin=None, stdout=None, stderr=None, close_fds=True, start_new_session=True)
+    play_time += transmit_repeat
 
     num_transmissions += 1
 
