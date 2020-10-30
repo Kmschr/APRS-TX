@@ -18,9 +18,10 @@ APRS transmission from a Raspberry Pi interfaced w/ Baofeng UV-5R over standard 
 
 Clone this repository and go into it
 
-`$ git clone https://github.com/Kmschr/APRS-TX`
-
-`$ cd APRS-TX`
+```
+$ git clone https://github.com/Kmschr/APRS-TX
+$ cd APRS-TX
+```
 
 Install dependencies
 
