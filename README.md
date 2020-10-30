@@ -4,7 +4,7 @@
 
 APRS transmission from a Raspberry Pi interfaced w/ Baofeng UV-5R over standard audio output
 
-![running](img/run.png)
+![running](img/run.gif)
 
 ## UV-5R Settings
 
