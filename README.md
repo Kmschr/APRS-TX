@@ -1,4 +1,7 @@
 # APRS-TX
+
+<img src="img/patch.png" alt="CSU Rocket Team Patch" width="300" />
+
 APRS transmission from a Raspberry Pi interfaced w/ Baofeng UV-5R over standard audio output
 
 ![running](img/run.png)
