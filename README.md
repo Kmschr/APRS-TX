@@ -1,5 +1,13 @@
 # APRS-TX
-APRS transmission from a Raspberry Pi interfaced w/ HT over standard audio output
+APRS transmission from a Raspberry Pi interfaced w/ Baofeng UV-5R over standard audio output
+
+![running](img/run.png)
+
+## UV-5R Settings
+
+`VOX` 1
+
+`TXP` HIGH
 
 ## Installation and Setup
 
