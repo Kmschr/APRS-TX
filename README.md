@@ -47,5 +47,5 @@ For automatic startup when pi is turned on
 
 ```
 XDG_RUNTIME_DIR=/run/user/1000
-@reboot python3 /home/pi/APRS-TX/APRS.py KE0SPF &
+@reboot set +H && python3 /home/pi/APRS-TX/APRS.py KE0SPF &
 ```

@@ -8,21 +8,32 @@ import os
 import sys
 import time
 import math
+import board
 import busio
 import signal
 import serial
+import pprint
 import yaspin
+import logging
 import argparse
+import threading
 import subprocess
 import adafruit_gps
-from yaspin import yaspin, kbi_safe_yaspin
+import adafruit_fxos8700
+import adafruit_mpl3115a2
 from datetime import datetime
+from yaspin import kbi_safe_yaspin
 
 script_path = os.path.dirname(os.path.realpath(sys.argv[0]))
 def signal_handler(sig, frame):
-    print('exiting')
     sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
+
+logging.basicConfig(filename=script_path + '/aprs.log', 
+                    format='%(asctime)s: %(message)s',
+                    level=logging.DEBUG)
+
+logging.info('Program Started')
 
 ######################################################################
 # OPTIONS
@@ -31,56 +42,124 @@ signal.signal(signal.SIGINT, signal_handler)
 parser = argparse.ArgumentParser(description='Transmit APRS information.')
 parser.add_argument('callsign', type=str,
                     help='Your FCC HAM license callsign')
-parser.add_argument('--with-gps', dest='gps', action='store_true',
-                    help='The Adafruit GPS is hooked up')
 parser.add_argument('--without-gps', dest='gps', action='store_false',
                     help='No GPS')
+parser.add_argument('--without-alt', dest='altimeter', action='store_false',
+                    help='No altimeter')
+parser.add_argument('--without-accelerometer', dest='accelerometer', action='store_false',
+                    help='No accelerometer')
 parser.set_defaults(gps=True)
+parser.set_defaults(altimeter=True)
+parser.set_defaults(accelerometer=True)
 args = parser.parse_args()
 
 CALLSIGN = args.callsign
-APRS_COMMENT = 'CSU ROCKET TEAM GPS TESTING'
+APRS_COMMENT = 'CSU ROCKET TEAM TEST'
 APRS_SYMBOL_ROCKET = 'O'
-TRANSMIT_TIME_SECONDS = 65
+TRANSMIT_TIME_SECONDS = 60
 
-print('Callsign: ' + CALLSIGN)
-print('APRS_COMMENT: ' + APRS_COMMENT)
+print('Callsign:', CALLSIGN)
+print('APRS_COMMENT:', APRS_COMMENT)
 print('Transmit Timer: ' + str(TRANSMIT_TIME_SECONDS) + 's')
+logging.info('Callsign: %s', CALLSIGN)
+logging.info('APRS_COMMENT: %s', APRS_COMMENT)
+logging.info('Transmit Timer: %s', str(TRANSMIT_TIME_SECONDS))
 
 ######################################################################
 # SETUP SENSORS
 ######################################################################
 
-gps = None
+# use Pi's mini UART and I2C for communicating with sensors
+uart = serial.Serial("/dev/ttyS0", baudrate=9600, timeout=10)
+i2c = busio.I2C(board.SCL, board.SDA)
+
 # Adafruit Ultimate GPS v3
+gps = None
 if args.gps:
-    uart = serial.Serial("/dev/ttyS0", baudrate=9600, timeout=10)
     gps = adafruit_gps.GPS(uart, debug=False)
+
+    # Only send back GPRMC (Recommended Minimum Specific GNSS Sentence) and GPGGA (GPS Fix Data)
     gps.send_command(b'PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0')
-    gps.send_command(b'PMTK220,500')
+
+    # Update once a second
+    gps.send_command(b'PMTK220,1000')
     gps.update()
 
-    with yaspin(text="Waiting for GPS") as sp:
+    logging.info('GPS Enabled')
+
+    with kbi_safe_yaspin(text="Waiting for GPS") as sp:
         while not gps.has_fix:
             gps.update()
-            time.sleep(0.5)
+            logging.info('Waiting for GPS fix...')
+            time.sleep(1)
+
+# Adafruit Barometric Altimeter MPL3115A2
+altimeter = None
+if args.altimeter:
+    altimeter = adafruit_mpl3115a2.MPL3115A2(i2c)
+    altimeter.sealevel_pressure = 102520
+
+    logging.info('Altimeter Enabled, Pressure: %d', altimeter.sealevel_pressure)
+
+# Adafruit 9-DOF Accelerometer
+accelerometer = None
+if args.accelerometer:
+    accelerometer = adafruit_fxos8700.FXOS8700(i2c)
+
+    logging.info('9-DOF Enabled')
 
 ######################################################################
-# TRANSMIT LOOP
+# TRANSMIT FUNCTION
 ######################################################################
 
-num_transmissions = 0
-transmit_repeat = TRANSMIT_TIME_SECONDS * 1e9
-play_time = time.time_ns() + 2e9
-start_time = play_time
+def transmit(aprs_info, num_transmissions):
+    # write APRS message as wave audio file
+    subprocess.run([script_path + '/afsk/aprs', 
+                    '-c', CALLSIGN, 
+                    '--destination', 'APCSU1',
+                    '-o', '/tmp/packet'+str(num_transmissions%3)+'.wav', 
+                    aprs_info])
 
+    logging.info('Transmitting: %s', aprs_info)                
+
+    # play APRS message over default soundcard in new non-blocking process
+    subprocess.Popen(["sudo aplay -q /tmp/packet"+str(num_transmissions%3)+".wav"], 
+                     shell=True, 
+                     stdin=None, 
+                     stdout=None, 
+                     stderr=None, 
+                     close_fds=True, 
+                     start_new_session=True)
+
+######################################################################
+# UPDATE LOOP
+######################################################################
+
+# Make a fancy spinner for running in terminal
 color = ("red", "white", "green", "blue")
 spinner = kbi_safe_yaspin(text="")
 spinner.start()
 
+# initialize update info
+num_updates = 0
+num_transmissions = 0
+last_update_time = time.time_ns()
+
+# Update once a second, and transmit if it is the correct time to do so
 while True:
-    # APRS Timestamp in format of Day/Hour/Minutes zulu time
-    zulutime = datetime.utcnow().strftime("%d%H%M")
+    delta_time = time.time_ns() - last_update_time
+    
+    # once a second check
+    if delta_time < 1e9:
+        # go back to top of loop since it hasnt been a second yet
+        continue
+
+    # start timer for this update
+    last_update_time = time.time_ns()
+
+    # update spinner to show time elapsed
+    spinner.text = 'running... ({}s)'.format(num_updates)
+    spinner.color = color[num_updates % 4]
 
     # latitude in format ddmm.hhN (i.e degrees, minutes, and hundredths of a minute north)
     # longitude in format dddmm.hhW (i.e degrees, minutes, and hundreths of a minute west)
@@ -88,8 +167,15 @@ while True:
     # altitude in format aaaaaa where altitude is in feet
     latitude = "0000.00N"
     longitude = "00000.00W"
-    altitude = "005003"
+    altitude = 5003
+    course = 0
+    speed = 0
 
+    # Acceleromter/Magnetometer readings
+    az = ay = az = "?"
+    mx = my = mz = "?"
+
+    # update info using GPS
     if gps is not None and gps.update():
         (latitude_min, latitude_deg) = math.modf(gps.latitude)
         (longitude_min, longitude_deg) = math.modf(gps.longitude)
@@ -102,42 +188,41 @@ while True:
         latitude = latitude_deg + latitude_min + latitude_dir
         longitude = longitude_deg + longitude_min + longitude_dir
         if gps.altitude_m is not None:
-            altitude = '{:06d}'.format(int(gps.altitude_m*3.28084))
+            altitude = int(gps.altitude_m*3.28084)
+        if gps.speed_knots is not None:
+            speed = int(gps.speed_knots)
+        if gps.track_angle_deg is not None:
+            course = int(gps.track_angle_deg)
 
-    # time and position format
-    aprs_info = '/{}z{}\\{}{}{} /A={}'.format(zulutime, 
-                                              latitude, 
-                                              longitude, 
-                                              APRS_SYMBOL_ROCKET, 
-                                              APRS_COMMENT, 
-                                              altitude)
+    # update info using altimeter
+    if altimeter is not None:
+        altitude = int(altimeter.altitude*3.28084)
 
-    spinner.text = CALLSIGN + '>APRS,WIDE1-1,WIDE2-1:' + aprs_info
-    spinner.color = color[num_transmissions % 4]
+    # update info using accelerometer
+    if accelerometer is not None:
+        try:
+            ax, ay, az = accelerometer.accelerometer
+            mx, my, mz = accelerometer.magnetometer
+        except OSError:
+            pass
 
-    # write APRS message as wave audio file
-    subprocess.run([script_path + "/afsk/aprs", 
-                    "-c", CALLSIGN, "-o", 
-                    "/tmp/packet"+str(num_transmissions%3)+".wav", 
-                    aprs_info])
-    aprs_end = time.time_ns()
+    logging.info('Updated: %s, %s  %dft', latitude, longitude, altitude)
 
-    # make sure its been required seconds exactly before playing audio
-    wait_time = (play_time - time.time_ns()) / 1e9
-    if wait_time > 0:
-        time.sleep(wait_time)
-    else:
-        print("APRS message is too long")
-    #print((time.time_ns() - start_time) / 1e9)
+    if num_updates % TRANSMIT_TIME_SECONDS == 0:
+        spinner.text = 'transmitting...'
 
-    # play APRS message over default soundcard in new non-blocking process
-    subprocess.Popen(["sudo aplay -q /tmp/packet"+str(num_transmissions%3)+".wav"], 
-                     shell=True, 
-                     stdin=None, 
-                     stdout=None, 
-                     stderr=None, 
-                     close_fds=True, 
-                     start_new_session=True)
-    play_time += transmit_repeat
+        aprs_info = '!{}\\{}{}{:03d}/{:03d}/A={:06d} {} Ax={:0.3f},Ay={:0.3f},Az={:0.3f}'.format(
+            latitude, 
+            longitude, 
+            APRS_SYMBOL_ROCKET, 
+            course,
+            speed,
+            altitude,
+            APRS_COMMENT, 
+            ax, ay, az
+        )
 
-    num_transmissions += 1
+        transmit_thread = threading.Thread(target=transmit, args=[aprs_info, num_transmissions])
+        transmit_thread.start()
+        num_transmissions += 1
+    num_updates += 1
