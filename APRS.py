@@ -56,7 +56,7 @@ args = parser.parse_args()
 CALLSIGN = args.callsign
 APRS_COMMENT = 'CSU ROCKET TEAM TEST'
 APRS_SYMBOL_ROCKET = 'O'
-TRANSMIT_TIME_SECONDS = 60
+TRANSMIT_TIME_SECONDS = 10
 
 print('Callsign:', CALLSIGN)
 print('APRS_COMMENT:', APRS_COMMENT)
@@ -172,7 +172,7 @@ while True:
     speed = 0
 
     # Acceleromter/Magnetometer readings
-    az = ay = az = "?"
+    ax = ay = az = 0
     mx = my = mz = "?"
 
     # update info using GPS
