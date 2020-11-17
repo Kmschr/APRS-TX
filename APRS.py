@@ -56,7 +56,7 @@ args = parser.parse_args()
 CALLSIGN = args.callsign
 APRS_COMMENT = 'CSU ROCKET TEAM TEST'
 APRS_SYMBOL_ROCKET = 'O'
-TRANSMIT_TIME_SECONDS = 10
+TRANSMIT_TIME_SECONDS = 20
 
 print('Callsign:', CALLSIGN)
 print('APRS_COMMENT:', APRS_COMMENT)
@@ -87,12 +87,6 @@ if args.gps:
 
     logging.info('GPS Enabled')
 
-    with kbi_safe_yaspin(text="Waiting for GPS") as sp:
-        while not gps.has_fix:
-            gps.update()
-            logging.info('Waiting for GPS fix...')
-            time.sleep(1)
-
 # Adafruit Barometric Altimeter MPL3115A2
 altimeter = None
 if args.altimeter:
@@ -117,19 +111,19 @@ def transmit(aprs_info, num_transmissions):
     subprocess.run([script_path + '/afsk/aprs', 
                     '-c', CALLSIGN, 
                     '--destination', 'APCSU1',
-                    '-o', '/tmp/packet'+str(num_transmissions%3)+'.wav', 
+                    '-o', '/tmp/packet'+str(num_transmissions%5)+'.wav', 
                     aprs_info])
 
     logging.info('Transmitting: %s', aprs_info)                
 
     # play APRS message over default soundcard in new non-blocking process
-    subprocess.Popen(["sudo aplay -q /tmp/packet"+str(num_transmissions%3)+".wav"], 
-                     shell=True, 
-                     stdin=None, 
-                     stdout=None, 
-                     stderr=None, 
-                     close_fds=True, 
-                     start_new_session=True)
+    subprocess.Popen(["sudo aplay -q /tmp/packet"+str(num_transmissions%5)+".wav"],
+                    shell=True,
+                    stdin=None,
+                    stdout=None,
+                    stderr=None,
+                    close_fds=True,
+                    start_new_session=True)
 
 ######################################################################
 # UPDATE LOOP
@@ -144,6 +138,7 @@ spinner.start()
 num_updates = 0
 num_transmissions = 0
 last_update_time = time.time_ns()
+start_time = last_update_time
 
 # Update once a second, and transmit if it is the correct time to do so
 while True:
@@ -157,8 +152,10 @@ while True:
     # start timer for this update
     last_update_time = time.time_ns()
 
+    elapsed = (last_update_time - start_time) / 1e9
+
     # update spinner to show time elapsed
-    spinner.text = 'running... ({}s)'.format(num_updates)
+    spinner.text = 'running... ({}s)'.format(elapsed)
     spinner.color = color[num_updates % 4]
 
     # latitude in format ddmm.hhN (i.e degrees, minutes, and hundredths of a minute north)
@@ -175,28 +172,34 @@ while True:
     ax = ay = az = 0
     mx = my = mz = "?"
 
-    # update info using GPS
-    if gps is not None and gps.update():
-        (latitude_min, latitude_deg) = math.modf(gps.latitude)
-        (longitude_min, longitude_deg) = math.modf(gps.longitude)
-        latitude_dir = 'N' if latitude_deg >= 0 else 'S'
-        longitude_dir = 'W' if longitude_deg <= 0 else 'E'
-        latitude_deg = '{:02d}'.format(abs(int(latitude_deg)))
-        longitude_deg = '{:03d}'.format(abs(int(longitude_deg)))
-        latitude_min = '{:05.2f}'.format(abs(round(latitude_min*60, 2)))
-        longitude_min = '{:05.2f}'.format(abs(round(longitude_min*60, 2)))
-        latitude = latitude_deg + latitude_min + latitude_dir
-        longitude = longitude_deg + longitude_min + longitude_dir
-        if gps.altitude_m is not None:
-            altitude = int(gps.altitude_m*3.28084)
-        if gps.speed_knots is not None:
-            speed = int(gps.speed_knots)
-        if gps.track_angle_deg is not None:
-            course = int(gps.track_angle_deg)
+    try:
+        # update info using GPS
+        if gps is not None and gps.update() and gps.has_fix:
+            (latitude_min, latitude_deg) = math.modf(gps.latitude)
+            (longitude_min, longitude_deg) = math.modf(gps.longitude)
+            latitude_dir = 'N' if latitude_deg >= 0 else 'S'
+            longitude_dir = 'W' if longitude_deg <= 0 else 'E'
+            latitude_deg = '{:02d}'.format(abs(int(latitude_deg)))
+            longitude_deg = '{:03d}'.format(abs(int(longitude_deg)))
+            latitude_min = '{:05.2f}'.format(abs(round(latitude_min*60, 2)))
+            longitude_min = '{:05.2f}'.format(abs(round(longitude_min*60, 2)))
+            latitude = latitude_deg + latitude_min + latitude_dir
+            longitude = longitude_deg + longitude_min + longitude_dir
+            if gps.altitude_m is not None:
+                altitude = int(gps.altitude_m*3.28084)
+            if gps.speed_knots is not None:
+                speed = int(gps.speed_knots)
+            if gps.track_angle_deg is not None:
+                course = int(gps.track_angle_deg)
+    except OSError:
+        spinner.write("> gps error");
 
-    # update info using altimeter
-    if altimeter is not None:
-        altitude = int(altimeter.altitude*3.28084)
+    try:
+        # update info using altimeter
+        if altimeter is not None:
+            altitude = int(altimeter.altitude*3.28084)
+    except OSError:
+        spinner.write("> altimeter error");
 
     # update info using accelerometer
     if accelerometer is not None:
@@ -211,18 +214,28 @@ while True:
     if num_updates % TRANSMIT_TIME_SECONDS == 0:
         spinner.text = 'transmitting...'
 
-        aprs_info = '!{}\\{}{}{:03d}/{:03d}/A={:06d} {} Ax={:0.3f},Ay={:0.3f},Az={:0.3f}'.format(
-            latitude, 
-            longitude, 
-            APRS_SYMBOL_ROCKET, 
-            course,
-            speed,
-            altitude,
-            APRS_COMMENT, 
-            ax, ay, az
-        )
+        subprocess.run([script_path + "/baa",
+                        "-c", CALLSIGN,
+                        "--lat", latitude,
+                        "--lng", longitude,
+                        "--course", str(course),
+                        "--speed", str(speed),
+                        "--alt", str(altitude)])
 
-        transmit_thread = threading.Thread(target=transmit, args=[aprs_info, num_transmissions])
-        transmit_thread.start()
+        #aprs_info = '!{}\\{}{}{:03d}/{:03d}/A={:06d} {} Ax={:0.3f},Ay={:0.3f},Az={:0.3f}'.format(
+        #    latitude, 
+        #    longitude, 
+        #    APRS_SYMBOL_ROCKET, 
+        #    course,
+        #    speed,
+        #    altitude,
+        #    APRS_COMMENT, 
+        #    ax, ay, az
+        #)
+
+        #transmit(aprs_info, num_transmissions)
+
+        #transmit_thread = threading.Thread(target=transmit, args=[aprs_info, num_transmissions])
+        #transmit_thread.start()
         num_transmissions += 1
     num_updates += 1
