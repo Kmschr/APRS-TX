@@ -18,7 +18,7 @@ import subprocess
 import adafruit_gps
 import adafruit_fxos8700
 import adafruit_mpl3115a2
-import RPi.GPIO as GPIO
+from gpiozero import LED
 
 script_path = os.path.dirname(os.path.realpath(sys.argv[0]))
 def signal_handler(sig, frame):
@@ -29,17 +29,10 @@ signal.signal(signal.SIGINT, signal_handler)
 # Yellow indicates a transmission occuring
 # Red indicates one of the sensors is not giving data
 # Blue indicates a fix for the GPS
-LED_GREEN = 13
-LED_RED = 16
-LED_BLUE = 29
-LED_YELLOW = 31
-
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BOARD)
-GPIO.setup(LED_GREEN, GPIO.OUT, initial=GPIO.HIGH)
-GPIO.setup(LED_RED, GPIO.OUT, initial=GPIO.LOW)
-GPIO.setup(LED_BLUE, GPIO.OUT, initial=GPIO.LOW)
-GPIO.setup(LED_YELLOW, GPIO.OUT, initial=GPIO.LOW)
+LED_GREEN = LED(13)
+LED_RED = LED(16)
+LED_BLUE = LED(29)
+LED_YELLOW = LED(31)
 
 logging.basicConfig(filename=script_path + '/aprs.log', 
                     format='%(asctime)s: %(message)s',
@@ -158,7 +151,7 @@ while True:
     try:
         # update info using GPS
         if gps is not None and gps.update() and gps.has_fix:
-            GPIO.output(LED_BLUE, GPIO.HIGH)
+            LED_BLUE.on()
             (latitude_min, latitude_deg) = math.modf(gps.latitude)
             (longitude_min, longitude_deg) = math.modf(gps.longitude)
             latitude_dir = 'N' if latitude_deg >= 0 else 'S'
@@ -176,7 +169,7 @@ while True:
             if gps.track_angle_deg is not None:
                 course = int(gps.track_angle_deg)
         else:
-            GPIO.output(LED_BLUE, GPIO.LOW)
+            LED_BLUE.off()
     except OSError:
         logging.info('GPS Error')
         encountered_error = True
@@ -200,14 +193,14 @@ while True:
 
     # indicate any errors with sensor data
     if encountered_error:
-        GPIO.ouptut(LED_RED, GPIO.HIGH)
+        LED_RED.on()
     else:
-        GPIO.output(LED_RED, GPIO.LOW)
+        LED_RED.off()
 
     logging.info('Updated: %s, %s  %dft', latitude, longitude, altitude)
 
     if num_updates % TRANSMIT_TIME_SECONDS == 0:
-        GPIO.output(LED_YELLOW, GPIO.HIGH)
+        LED_YELLOW.on()
 
         logging.info('transmitting')
 
@@ -219,6 +212,6 @@ while True:
                         "--speed", str(speed),
                         "--alt", str(altitude)])
 
-        GPIO.output(LED_YELLOW, GPIO.LOW)
+        LED_YELLOW.off()
 
     num_updates += 1
