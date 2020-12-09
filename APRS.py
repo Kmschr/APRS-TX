@@ -171,29 +171,32 @@ while True:
                 course = int(gps.track_angle_deg)
         else:
             LED_BLUE.off()
-    except OSError:
+    except OSError as error:
         logging.info('GPS Error')
         encountered_error = True
         traceback.print_exc()
+        print(error)
 
     try:
         # update info using altimeter
         if altimeter is not None:
             altitude = int(altimeter.altitude*3.28084)
-    except OSError:
+    except OSError as error:
         logging.info('altimeter error')
         encountered_error = True
         traceback.print_exc()
+        print(error)
 
     # update info using accelerometer
     try:
         if accelerometer is not None:
             ax, ay, az = accelerometer.accelerometer
             mx, my, mz = accelerometer.magnetometer
-    except OSError:
+    except OSError as error:
         logging.info('accelerometer error')
         encountered_error = True
         traceback.print_exc()
+        print(error)
 
     # indicate any errors with sensor data
     if encountered_error:
