@@ -15,6 +15,7 @@ import serial
 import logging
 import argparse
 import traceback
+import threading
 import subprocess
 import adafruit_gps
 import adafruit_fxos8700
@@ -109,11 +110,37 @@ if args.accelerometer:
     logging.info('9-DOF Enabled')
 
 ######################################################################
+# TRANSMIT FUNCTION
+######################################################################
+
+def transmit(aprs_info, num_transmissions, led):
+    # write APRS message as wave audio file
+    subprocess.run([script_path + '/afsk/aprs', 
+                    '-c', CALLSIGN, 
+                    '--destination', 'APCSU1',
+                    '-o', '/tmp/packet'+str(num_transmissions%3)+'.wav', 
+                    aprs_info])
+
+    logging.info('Transmitting: %s', aprs_info)                
+
+    # play APRS message over default soundcard in new non-blocking process
+    subprocess.Popen(["sudo aplay -q /tmp/packet"+str(num_transmissions%3)+".wav"], 
+                     shell=True, 
+                     stdin=None, 
+                     stdout=None, 
+                     stderr=None, 
+                     close_fds=True, 
+                     start_new_session=True)
+
+    led.off()
+
+######################################################################
 # UPDATE LOOP
 ######################################################################
 
 # initialize update info
 num_updates = 0
+num_transmissions = 0
 last_update_time = time.time_ns()
 start_time = last_update_time
 
@@ -211,14 +238,19 @@ while True:
 
         logging.info('transmitting')
 
-        subprocess.run([script_path + "/baa",
-                        "-c", CALLSIGN,
-                        "--lat", latitude,
-                        "--lng", longitude,
-                        "--course", str(course),
-                        "--speed", str(speed),
-                        "--alt", str(altitude)])
+        aprs_info = '!{}\\{}{}{:03d}/{:03d}/A={:06d} {} Ax={:0.3f},Ay={:0.3f},Az={:0.3f}'.format(
+            latitude, 
+            longitude, 
+            APRS_SYMBOL_ROCKET, 
+            course,
+            speed,
+            altitude,
+            APRS_COMMENT, 
+            ax, ay, az
+        )
 
-        LED_YELLOW.off()
+        transmit_thread = threading.Thread(target=transmit, args=[aprs_info, num_transmissions, LED_YELLOW])
+        transmit_thread.start()
+        num_transmissions += 1
 
     num_updates += 1
