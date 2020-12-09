@@ -29,10 +29,10 @@ signal.signal(signal.SIGINT, signal_handler)
 # Yellow indicates a transmission occuring
 # Red indicates one of the sensors is not giving data
 # Blue indicates a fix for the GPS
-LED_GREEN = LED(13)
-LED_RED = LED(16)
-LED_BLUE = LED(29)
-LED_YELLOW = LED(31)
+LED_GREEN = LED(27)
+LED_RED = LED(23)
+LED_BLUE = LED(5)
+LED_YELLOW = LED(6)
 
 logging.basicConfig(filename=script_path + '/aprs.log', 
                     format='%(asctime)s: %(message)s',
