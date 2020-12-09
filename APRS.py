@@ -12,22 +12,34 @@ import board
 import busio
 import signal
 import serial
-import pprint
-import yaspin
 import logging
 import argparse
-import threading
 import subprocess
 import adafruit_gps
 import adafruit_fxos8700
 import adafruit_mpl3115a2
-from datetime import datetime
-from yaspin import kbi_safe_yaspin
+import RPi.GPIO as GPIO
 
 script_path = os.path.dirname(os.path.realpath(sys.argv[0]))
 def signal_handler(sig, frame):
     sys.exit(0)
 signal.signal(signal.SIGINT, signal_handler)
+
+# Green indicates the program is running
+# Yellow indicates a transmission occuring
+# Red indicates one of the sensors is not giving data
+# Blue indicates a fix for the GPS
+LED_GREEN = 13
+LED_RED = 16
+LED_BLUE = 29
+LED_YELLOW = 31
+
+GPIO.setwarnings(False)
+GPIO.setmode(GPIO.BOARD)
+GPIO.setup(LED_GREEN, GPIO.OUT, initial=GPIO.HIGH)
+GPIO.setup(LED_RED, GPIO.OUT, initial=GPIO.LOW)
+GPIO.setup(LED_BLUE, GPIO.OUT, initial=GPIO.LOW)
+GPIO.setup(LED_YELLOW, GPIO.OUT, initial=GPIO.LOW)
 
 logging.basicConfig(filename=script_path + '/aprs.log', 
                     format='%(asctime)s: %(message)s',
@@ -103,40 +115,11 @@ if args.accelerometer:
     logging.info('9-DOF Enabled')
 
 ######################################################################
-# TRANSMIT FUNCTION
-######################################################################
-
-def transmit(aprs_info, num_transmissions):
-    # write APRS message as wave audio file
-    subprocess.run([script_path + '/afsk/aprs', 
-                    '-c', CALLSIGN, 
-                    '--destination', 'APCSU1',
-                    '-o', '/tmp/packet'+str(num_transmissions%5)+'.wav', 
-                    aprs_info])
-
-    logging.info('Transmitting: %s', aprs_info)                
-
-    # play APRS message over default soundcard in new non-blocking process
-    subprocess.Popen(["sudo aplay -q /tmp/packet"+str(num_transmissions%5)+".wav"],
-                    shell=True,
-                    stdin=None,
-                    stdout=None,
-                    stderr=None,
-                    close_fds=True,
-                    start_new_session=True)
-
-######################################################################
 # UPDATE LOOP
 ######################################################################
 
-# Make a fancy spinner for running in terminal
-color = ("red", "white", "green", "blue")
-spinner = kbi_safe_yaspin(text="")
-spinner.start()
-
 # initialize update info
 num_updates = 0
-num_transmissions = 0
 last_update_time = time.time_ns()
 start_time = last_update_time
 
@@ -154,9 +137,7 @@ while True:
 
     elapsed = (last_update_time - start_time) / 1e9
 
-    # update spinner to show time elapsed
-    spinner.text = 'running... ({}s)'.format(elapsed)
-    spinner.color = color[num_updates % 4]
+    print('running... ({}s)'.format(elapsed))
 
     # latitude in format ddmm.hhN (i.e degrees, minutes, and hundredths of a minute north)
     # longitude in format dddmm.hhW (i.e degrees, minutes, and hundreths of a minute west)
@@ -172,9 +153,12 @@ while True:
     ax = ay = az = 0
     mx = my = mz = "?"
 
+    encountered_error = False
+
     try:
         # update info using GPS
         if gps is not None and gps.update() and gps.has_fix:
+            GPIO.output(LED_BLUE, GPIO.HIGH)
             (latitude_min, latitude_deg) = math.modf(gps.latitude)
             (longitude_min, longitude_deg) = math.modf(gps.longitude)
             latitude_dir = 'N' if latitude_deg >= 0 else 'S'
@@ -191,28 +175,41 @@ while True:
                 speed = int(gps.speed_knots)
             if gps.track_angle_deg is not None:
                 course = int(gps.track_angle_deg)
+        else:
+            GPIO.output(LED_BLUE, GPIO.LOW)
     except OSError:
-        spinner.write("> gps error");
+        logging.info('GPS Error')
+        encountered_error = True
 
     try:
         # update info using altimeter
         if altimeter is not None:
             altitude = int(altimeter.altitude*3.28084)
     except OSError:
-        spinner.write("> altimeter error");
+        logging.info('altimeter error')
+        encountered_error = True
 
     # update info using accelerometer
-    if accelerometer is not None:
-        try:
+    try:
+        if accelerometer is not None:
             ax, ay, az = accelerometer.accelerometer
             mx, my, mz = accelerometer.magnetometer
-        except OSError:
-            pass
+    except OSError:
+        logging.info('accelerometer error')
+        encountered_error = True
+
+    # indicate any errors with sensor data
+    if encountered_error:
+        GPIO.ouptut(LED_RED, GPIO.HIGH)
+    else:
+        GPIO.output(LED_RED, GPIO.LOW)
 
     logging.info('Updated: %s, %s  %dft', latitude, longitude, altitude)
 
     if num_updates % TRANSMIT_TIME_SECONDS == 0:
-        spinner.text = 'transmitting...'
+        GPIO.output(LED_YELLOW, GPIO.HIGH)
+
+        logging.info('transmitting')
 
         subprocess.run([script_path + "/baa",
                         "-c", CALLSIGN,
@@ -222,20 +219,6 @@ while True:
                         "--speed", str(speed),
                         "--alt", str(altitude)])
 
-        #aprs_info = '!{}\\{}{}{:03d}/{:03d}/A={:06d} {} Ax={:0.3f},Ay={:0.3f},Az={:0.3f}'.format(
-        #    latitude, 
-        #    longitude, 
-        #    APRS_SYMBOL_ROCKET, 
-        #    course,
-        #    speed,
-        #    altitude,
-        #    APRS_COMMENT, 
-        #    ax, ay, az
-        #)
+        GPIO.output(LED_YELLOW, GPIO.LOW)
 
-        #transmit(aprs_info, num_transmissions)
-
-        #transmit_thread = threading.Thread(target=transmit, args=[aprs_info, num_transmissions])
-        #transmit_thread.start()
-        num_transmissions += 1
     num_updates += 1
