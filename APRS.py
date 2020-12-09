@@ -14,6 +14,7 @@ import signal
 import serial
 import logging
 import argparse
+import traceback
 import subprocess
 import adafruit_gps
 import adafruit_fxos8700
@@ -173,6 +174,7 @@ while True:
     except OSError:
         logging.info('GPS Error')
         encountered_error = True
+        traceback.print_exc()
 
     try:
         # update info using altimeter
@@ -181,6 +183,7 @@ while True:
     except OSError:
         logging.info('altimeter error')
         encountered_error = True
+        traceback.print_exc()
 
     # update info using accelerometer
     try:
@@ -190,6 +193,7 @@ while True:
     except OSError:
         logging.info('accelerometer error')
         encountered_error = True
+        traceback.print_exc()
 
     # indicate any errors with sensor data
     if encountered_error:
