@@ -28,7 +28,7 @@ script_path = os.path.dirname(os.path.realpath(sys.argv[0]))
 # Yellow indicates a transmission occuring
 # Red indicates one of the sensors is not giving data
 # Blue indicates a fix for the GPS
-LED_GREEN = LED(27)
+LED_GREEN = LED(22)
 LED_RED = LED(23)
 LED_BLUE = LED(5)
 LED_YELLOW = LED(6)
