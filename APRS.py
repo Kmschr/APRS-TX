@@ -11,6 +11,7 @@ import math
 import board
 import busio
 import signal
+import socket
 import serial
 import logging
 import argparse
@@ -21,6 +22,31 @@ import adafruit_gps
 import adafruit_fxos8700
 import adafruit_mpl3115a2
 from gpiozero import LED
+
+######################################################################
+# PREVENT FROM RUNNING TWICE
+######################################################################
+
+def get_lock(process_name):
+    # Without holding a reference to our socket somewhere it gets garbage
+    # collected when the function exits
+    get_lock._lock_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+
+    try:
+        # The null byte (\0) means the socket is created 
+        # in the abstract namespace instead of being created 
+        # on the file system itself.
+        # Works only in Linux
+        get_lock._lock_socket.bind('\0' + process_name)
+    except socket.error:
+        print('ERROR: PROGRAM IS ALREADY RUNNING, KILL IT BEFORE TRYING TO RUN AGAIN')
+        sys.exit()
+
+get_lock('aprs')
+
+######################################################################
+# LED & LOGGING SETUP
+######################################################################
 
 script_path = os.path.dirname(os.path.realpath(sys.argv[0]))
 
