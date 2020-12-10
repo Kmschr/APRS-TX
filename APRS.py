@@ -23,9 +23,6 @@ import adafruit_mpl3115a2
 from gpiozero import LED
 
 script_path = os.path.dirname(os.path.realpath(sys.argv[0]))
-def signal_handler(sig, frame):
-    sys.exit(0)
-signal.signal(signal.SIGINT, signal_handler)
 
 # Green indicates the program is running
 # Yellow indicates a transmission occuring
@@ -35,6 +32,8 @@ LED_GREEN = LED(27)
 LED_RED = LED(23)
 LED_BLUE = LED(5)
 LED_YELLOW = LED(6)
+
+LED_GREEN.on()
 
 logging.basicConfig(filename=script_path + '/aprs.log', 
                     format='%(asctime)s: %(message)s',
@@ -124,13 +123,14 @@ def transmit(aprs_info, num_transmissions, led):
     logging.info('Transmitting: %s', aprs_info)                
 
     # play APRS message over default soundcard in new non-blocking process
-    subprocess.Popen(["sudo aplay -q /tmp/packet"+str(num_transmissions%3)+".wav"], 
+    t = subprocess.Popen(["sudo aplay -q /tmp/packet"+str(num_transmissions%3)+".wav"], 
                      shell=True, 
                      stdin=None, 
                      stdout=None, 
                      stderr=None, 
                      close_fds=True, 
                      start_new_session=True)
+    t.wait()
 
     led.off()
 
@@ -248,6 +248,8 @@ while True:
             APRS_COMMENT, 
             ax, ay, az
         )
+
+        print('transmitting', aprs_info)
 
         transmit_thread = threading.Thread(target=transmit, args=[aprs_info, num_transmissions, LED_YELLOW])
         transmit_thread.start()
