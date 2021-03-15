@@ -151,6 +151,8 @@ while True:
     ax = ay = az = "?"
     mx = my = mz = "?"
 
+    sensor_error = False
+
     if gps_enabled:
         try:
             if gps.update() and gps.has_fix:
@@ -173,11 +175,28 @@ while True:
             LED_BLUE.off()
             logging.info('GPS gave error')
             logging.info(str(gps_error))
+            sensor_error = True
 
     if altimeter_enabled:
-        pass
+        try:
+            altitude = '{:06d}'.format(int(altimeter.altitude*3.28084))
+        except Exception as altimeter_error:
+            logging.info('Altimeter gave error')
+            logging.info(str(altimeter_error))
+            sensor_error = True
+
     if accelerometer_enabled:
-        pass
+        try:
+            ax, ay, az = accelerometer.accelerometer
+        except Exception as accelerometer_error:
+            logging.info('Accelerometer gave error')
+            logging.info(str(accelerometer_error))
+            sensor_error = True
+
+    if sensor_error:
+        LED_RED.on()
+    else:
+        LED_RED.off()
 
     aprs_info = '!{}\\{}{}{:03d}/{:03d}/A={} {} a={},{},{}'.format(
             latitude,
