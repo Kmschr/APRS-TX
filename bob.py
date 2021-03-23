@@ -19,7 +19,7 @@ import subprocess
 import adafruit_adxl34x
 import adafruit_bme280
 import adafruit_gps
-from gpiozero import LED
+from gpiozero import LED, Buzzer
 
 #######################################################
 # PREVENT FROM RUNNING MULTIPLE TIMES ON A UNIX OS
@@ -68,6 +68,20 @@ root_logger.addHandler(console_handler)
 root_logger.setLevel(logging.DEBUG)
 
 logging.info('Program Started')
+
+######################################################
+# BUZZ BUZZ IMA BEEE
+######################################################
+bz = Buzzer(26)
+bz.on()
+time.sleep(5)
+bz.off()
+time.sleep(1)
+for i in range(5):
+    bz.on()
+    time.sleep(0.2)
+    bz.off()
+    time.sleep(0.5)
 
 ######################################################
 # CONFIG + CONSTANTS
