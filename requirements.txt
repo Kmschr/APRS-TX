@@ -1,4 +1,4 @@
+adafruit-circuitpython-adxl34x
+adafruit-circuitpython-bme280
 adafruit-circuitpython-gps
-adafruit-circuitpython-mpl3115a2
-adafruit-circuitpython-fxos8700
 gpiozero

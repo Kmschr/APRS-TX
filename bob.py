@@ -16,9 +16,9 @@ import serial
 import socket
 import logging
 import subprocess
+import adafruit_adxl34x
+import adafruit_bme280
 import adafruit_gps
-import adafruit_fxos8700
-import adafruit_mpl3115a2
 from gpiozero import LED
 
 #######################################################
@@ -105,12 +105,12 @@ except Exception as gps_exception:
     logging.info('GPS Disconnected')
     logging.info(str(gps_exception))
 
-# Adafruit Barometric Altimeter MPL35115A2
+# Adafruit Barometric Altimeter BME280
 altimeter_enabled = False
 altimeter = None
 try:
-    altimeter = adafruit_mpl3115a2.MPL3115A2(i2c)
-    altimeter.sealevel_pressure = 102520
+    altimeter = adafruit_bme280.Adafruit_BME280_I2C(i2c)
+    altimeter.sealevel_pressure = 1025.20
 
     logging.info('Altimeter Enabled, Pressure: %d', altimeter.sealevel_pressure)
     altimeter_enabled = True
@@ -118,12 +118,12 @@ except Exception as altimeter_exception:
     logging.info('Altimeter Disconnected')
     logging.info(str(altimeter_exception))
 
-# Adafruit 9-DOF Accelerometer
+# Adafruit ADXL 345 Accelerometer
 accelerometer_enabled = False
 accelerometer = None
 try:
-    accelerometer = adafruit_fxos8700.FXOS8700(i2c)
-    logging.info('9-DOF Enabled')
+    accelerometer = adafruit_adxl34x.ADXL345(i2c)
+    logging.info('Accelerometer Enabled')
     accelerometer_enabled = True
 except Exception as accelerometer_exception:
     logging.info('Accelerometer Disconnected')
@@ -187,7 +187,7 @@ while True:
 
     if accelerometer_enabled:
         try:
-            ax, ay, az = accelerometer.accelerometer
+            ax, ay, az = accelerometer.acceleration
         except Exception as accelerometer_error:
             logging.info('Accelerometer gave error')
             logging.info(str(accelerometer_error))
