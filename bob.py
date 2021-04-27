@@ -16,9 +16,9 @@ import serial
 import socket
 import logging
 import subprocess
-import adafruit_adxl34x
-import adafruit_bme280
 import adafruit_gps
+import adafruit_fxos8700
+import adafruit_mpl3115a2
 from gpiozero import LED, Buzzer
 
 #######################################################
@@ -97,7 +97,7 @@ APRS_SYMBOL_ROCKET = 'O'
 
 logging.info('Setting up sensors')
 
-uart = serial.Serial('/dev/ttyS0', baudrate=9600, timeout=10)
+uart = serial.Serial('/dev/serial0', baudrate=9600, timeout=10)
 i2c = busio.I2C(board.SCL, board.SDA)
 
 # Adafruit Ultimate GPS v3
@@ -119,12 +119,12 @@ except Exception as gps_exception:
     logging.info('GPS Disconnected')
     logging.info(str(gps_exception))
 
-# Adafruit Barometric Altimeter BME280
+# Adafruit Barometric Altimeter MPL3511A2
 altimeter_enabled = False
 altimeter = None
 try:
-    altimeter = adafruit_bme280.Adafruit_BME280_I2C(i2c)
-    altimeter.sealevel_pressure = 1025.20
+    altimeter = adafruit_mpl3115a2.MPL3115A2(i2c)
+    altimeter.sealevel_pressure = 102520
 
     logging.info('Altimeter Enabled, Pressure: %d', altimeter.sealevel_pressure)
     altimeter_enabled = True
@@ -132,11 +132,11 @@ except Exception as altimeter_exception:
     logging.info('Altimeter Disconnected')
     logging.info(str(altimeter_exception))
 
-# Adafruit ADXL 345 Accelerometer
+# Adafruit 9-DOF Accelerometer
 accelerometer_enabled = False
 accelerometer = None
 try:
-    accelerometer = adafruit_adxl34x.ADXL345(i2c)
+    accelerometer = adafruit_fxos8700.FXOS8700(i2c)
     logging.info('Accelerometer Enabled')
     accelerometer_enabled = True
 except Exception as accelerometer_exception:
@@ -160,6 +160,7 @@ while True:
     altitude = "000000"
     course = 0
     speed = 0
+    alt_source = "none"
 
     # Accelerometer/Magnetometer readings
     ax = ay = az = "?"
@@ -181,6 +182,7 @@ while True:
                 longitude = longitude_deg + longitude_min + 'W'
                 if gps.altitude_m is not None:
                     altitude = '{:06d}'.format(int(gps.altitude_m*3.28084))
+                    alt_source = "gps"
                 if gps.speed_knots is not None:
                     speed = int(gps.speed_knots)
                 if gps.track_angle_deg is not None:
@@ -194,6 +196,7 @@ while True:
     if altimeter_enabled:
         try:
             altitude = '{:06d}'.format(int(altimeter.altitude*3.28084))
+            alt_source = "alt"
         except Exception as altimeter_error:
             logging.info('Altimeter gave error')
             logging.info(str(altimeter_error))
@@ -201,7 +204,7 @@ while True:
 
     if accelerometer_enabled:
         try:
-            ax, ay, az = accelerometer.acceleration
+            ax, ay, az = accelerometer.accelerometer
         except Exception as accelerometer_error:
             logging.info('Accelerometer gave error')
             logging.info(str(accelerometer_error))
@@ -212,7 +215,7 @@ while True:
     else:
         LED_RED.off()
 
-    aprs_info = '!{}\\{}{}{:03d}/{:03d}/A={} {} a={},{},{}'.format(
+    aprs_info = '!{}\\{}{}{:03d}/{:03d}/A={} {} a={},{},{} s={}'.format(
             latitude,
             longitude,
             APRS_SYMBOL_ROCKET,
@@ -220,7 +223,8 @@ while True:
             speed,
             altitude,
             APRS_COMMENT,
-            ax, ay, az
+            round(ax,3), round(ay,3), round(az,3),
+            alt_source
     )
 
     logging.info(aprs_info)
@@ -231,11 +235,10 @@ while True:
                     '--o', script_path + '/packet.wav',
                     aprs_info])
 
-
-
     LED_YELLOW.on()
     try:
-        subprocess.run(['aplay',
+        subprocess.run(['sudo',
+                        'aplay',
                         '-q',
                          script_path + '/packet.wav'])
     except Exception as aplay_error:
