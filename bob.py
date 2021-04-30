@@ -143,6 +143,13 @@ except Exception as accelerometer_exception:
     logging.info('Accelerometer Disconnected')
     logging.info(str(accelerometer_exception))
 
+# GPS buffer fills up while we take time transmitting
+# Flush this buffer to get newest data available every transmit cycle
+def flush_GPS_buffer(g):
+    for i in range(20):
+        if not g.update():
+            return
+
 ############################################################
 # TRANSMIT LOOP
 ############################################################
@@ -170,7 +177,9 @@ while True:
 
     if gps_enabled:
         try:
-            if gps.update() and gps.has_fix:
+            flush_GPS_buffer(gps)
+            if gps.has_fix:
+                logging.info('GPS has fix')
                 LED_BLUE.on()
                 (latitude_min, latitude_deg) = math.modf(gps.latitude)
                 (longitude_min, longitude_deg) = math.modf(gps.longitude)
