@@ -72,16 +72,17 @@ logging.info('Program Started')
 ######################################################
 # BUZZ BUZZ IMA BEEE
 ######################################################
-bz = Buzzer(26)
-bz.on()
-time.sleep(5)
-bz.off()
-time.sleep(1)
-for i in range(5):
-    bz.on()
-    time.sleep(0.2)
-    bz.off()
-    time.sleep(0.5)
+# Not used in subscale 3
+#bz = Buzzer(26)
+#bz.on()
+#time.sleep(5)
+#bz.off()
+#time.sleep(1)
+#for i in range(5):
+#    bz.on()
+#    time.sleep(0.2)
+#    bz.off()
+#    time.sleep(0.5)
 
 ######################################################
 # CONFIG + CONSTANTS
