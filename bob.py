@@ -15,6 +15,7 @@ import busio
 import serial
 import socket
 import logging
+import datetime
 import subprocess
 import adafruit_gps
 import adafruit_fxos8700
@@ -110,7 +111,7 @@ try:
     # Only send back GPRMC (Recommended Minimum Specific GNSS Sentence) and GPGGA (GPS Fix Data)
     gps.send_command(b'PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0')
 
-    # Update once a second
+    # Update once every second
     gps.send_command(b'PMTK220,1000')
     gps.update()
 
@@ -147,13 +148,28 @@ except Exception as accelerometer_exception:
 # GPS buffer fills up while we take time transmitting
 # Flush this buffer to get newest data available every transmit cycle
 def flush_GPS_buffer(g):
-    for i in range(20):
-        if not g.update():
-            return
+    f=open(script_path + "/gps.csv", "a+")
+    while g.update():
+        if g.has_fix:
+            f.write(str(gps.latitude))
+            f.write(', ')
+            f.write(str(gps.longitude))
+            if gps.altitude_m is not None:
+                f.write(', ')
+                f.write(str(gps.altitude_m))
+            f.write('\n')
+    f.close()
+
 
 ############################################################
 # TRANSMIT LOOP
 ############################################################
+
+f=open(script_path + "/gps.csv", "a+")
+f.write('Program Start\n')
+f.write(str(datetime.datetime.now()))
+f.write('\n')
+f.close()
 
 logging.info('Starting transmissions')
 
@@ -180,7 +196,6 @@ while True:
         try:
             flush_GPS_buffer(gps)
             if gps.has_fix:
-                logging.info('GPS has fix')
                 LED_BLUE.on()
                 (latitude_min, latitude_deg) = math.modf(gps.latitude)
                 (longitude_min, longitude_deg) = math.modf(gps.longitude)
@@ -225,7 +240,7 @@ while True:
     else:
         LED_RED.off()
 
-    aprs_info = '!{}\\{}{}{:03d}/{:03d}/A={} {} a={},{},{} s={}'.format(
+    aprs_info = '!{}\\{}{}{:03d}/{:03d}/A={} {} a={},{},{} {}'.format(
             latitude,
             longitude,
             APRS_SYMBOL_ROCKET,
